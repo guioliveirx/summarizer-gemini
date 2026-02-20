@@ -1,51 +1,67 @@
 import axios from "axios";
-import { type ChangeEvent, type SubmitEvent, useEffect, useState } from "react";
+import { type SubmitEvent, useEffect, useState } from "react";
 import "./index.css";
 import { CircleNotchIcon } from "@phosphor-icons/react";
 
-export function App() {
-	const [input, setInput] = useState<string>("");
-	const [isLoading, setIsLoading] = useState<boolean>(false);
-	const [responsesGemini, setResponsesGemini] = useState<Array<string>>([]);
+export interface IMessage {
+	id: string;
+	role: "user" | "assistant";
+	content: string;
+	timestamp: Date;
+}
 
-	const GeminiResponsesStorageKey = "gemini_responses";
+export function App() {
+	const [input, setInput] = useState("");
+	const [isLoading, setIsLoading] = useState(false);
+	const [messages, setMessages] = useState<Array<IMessage>>([]);
+	const StorageKey = "gemini_responses";
 
 	const handleSubmitForm = async (e: SubmitEvent<HTMLFormElement>) => {
 		e.preventDefault();
-		setIsLoading(!isLoading);
+		if (!input.trim()) return;
 
-		if (input.length > 0) {
+		const userMessage: IMessage = {
+			id: crypto.randomUUID(),
+			role: "user",
+			content: input,
+			timestamp: new Date(),
+		};
+
+		setMessages((prev) => {
+			const updated = [...prev, userMessage];
+			localStorage.setItem(StorageKey, JSON.stringify(updated));
+			return updated;
+		});
+
+		setIsLoading(true);
+		setInput("");
+
+		try {
 			const response = await axios.post("http://localhost:3000/ask", {
 				message: input,
 			});
 
-			const { message } = response.data;
+			const assistantMessage: IMessage = response.data;
 
-			setResponsesGemini((prev) => {
-				const updatedResponses = [...prev, message];
-				localStorage.setItem(
-					GeminiResponsesStorageKey,
-					JSON.stringify(updatedResponses),
-				);
-				return updatedResponses;
+			setMessages((prev) => {
+				const updated = [...prev, assistantMessage];
+				localStorage.setItem(StorageKey, JSON.stringify(updated));
+				return updated;
 			});
-			setInput("");
+		} catch (error) {
+			console.error("Erro ao enviar mensagem:", error);
+		} finally {
+			setIsLoading(false);
 		}
-
-		setIsLoading(false);
 	};
 
 	useEffect(() => {
-		const responses = localStorage.getItem(GeminiResponsesStorageKey);
+		const responses = localStorage.getItem(StorageKey);
 
-		if (responses) setResponsesGemini(JSON.parse(responses));
+		if (!responses) return;
+
+		setMessages(JSON.parse(responses));
 	}, []);
-
-	const handleInputValue = (
-		e: ChangeEvent<HTMLInputElement, HTMLInputElement>,
-	) => {
-		setInput(e.target.value);
-	};
 
 	return (
 		<main className="flex flex-col items-center justify-center h-svh p-8">
@@ -54,14 +70,22 @@ export function App() {
 				className="flex flex-col justify-end border rounded-md xl:w-7xl min-h-100 h-full gap-3 p-8 text-center relative z-10"
 			>
 				<div className="flex flex-col flex-1 gap-5 rounded-sm p-5 overflow-y-auto shadow-inner shadow-zinc-700">
-					{responsesGemini.length > 0 ? (
-						responsesGemini.map((response) => (
-							<p
-								key={response.length}
-								className="text-start bg-zinc-700 p-2 rounded-sm"
+					{messages.length > 0 ? (
+						messages.map((message) => (
+							<div
+								key={message.id}
+								className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
 							>
-								{response}
-							</p>
+								<div
+									className={`max-w-[75%] p-3 rounded-md ${
+										message.role === "user"
+											? "bg-blue-600 text-white"
+											: "bg-zinc-700 text-zinc-100"
+									}`}
+								>
+									<p>{message.content}</p>
+								</div>
+							</div>
 						))
 					) : (
 						<p className="text-start text-inherit">Have no messages</p>
@@ -75,11 +99,12 @@ export function App() {
 						id="iText"
 						value={input}
 						placeholder="Input your text"
-						onChange={(e) => handleInputValue(e)}
+						onChange={(e) => setInput(e.target.value)}
 					/>
 					<button
 						className="flex items-center justify-center border w-17.5 py-2 rounded-sm cursor-pointer hover:bg-zinc-200 hover:text-zinc-900 transition-all ease-in-out duration-300"
 						type="submit"
+						disabled={isLoading}
 					>
 						{isLoading ? (
 							<CircleNotchIcon
@@ -96,5 +121,3 @@ export function App() {
 		</main>
 	);
 }
-
-export default App;

@@ -1,23 +1,44 @@
-import { serve } from "bun";
 import index from "./index.html";
 import { summarizer } from "./api/gemini";
+import { serve } from "bun";
+import type { IMessage } from "./App";
 
-interface IRequestGemini {
+interface IAsk {
 	message: string;
 }
 
 const server = serve({
 	routes: {
 		"/*": index,
-		"/ask": async (req) => {
-			const { message } = (await req.json()) as IRequestGemini;
+		"/ask": async (req): Promise<Response> => {
+			const body = await req.json();
+			const { message } = body as IAsk;
 
-			const response = await summarizer(message);
+			try {
+				const response = await summarizer(message);
 
-			return Response.json({
-				message: response,
-				status: 201,
-			});
+				if (!response)
+					return Response.json({
+						error: "Error ao obter a mensagem",
+						status: 500,
+					});
+
+				return Response.json(
+					{
+						id: Bun.randomUUIDv7(),
+						role: "assistant",
+						content: response,
+						timestamp: new Date(),
+					},
+					{ status: 200 },
+				);
+			} catch (error) {
+				return Response.json({
+					error: error,
+					messageError: "Erro interno no servidor",
+					status: 500,
+				});
+			}
 		},
 	},
 
